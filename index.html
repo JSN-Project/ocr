@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Pokémon Card Scanner</title>
+    <title>Live Pokémon Card Scanner - Cropped</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body {
@@ -20,6 +20,8 @@
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
+        
+        /* Camera Container & Overlays */
         .camera-container {
             position: relative;
             width: 100%;
@@ -34,18 +36,47 @@
             width: 100%;
             display: block;
         }
-        /* Hidden canvas used to capture the photo */
+
+        /* 1. Main Alignment Frame (Green) */
+        .alignment-frame {
+            position: absolute;
+            top: 5%; 
+            left: 5%; 
+            right: 5%; 
+            bottom: 5%;
+            border: 2px dashed #22c55e;
+            border-radius: 12px;
+            pointer-events: none; /* Lets clicks pass through */
+            z-index: 10;
+        }
+
+        /* 2. Target Crop Frame (Blue - Bottom Left) */
+        .crop-frame {
+            position: absolute;
+            bottom: 5%; /* Matches the bottom of the green frame */
+            left: 5%;   /* Matches the left of the green frame */
+            width: 35%; /* Width of the set number area */
+            height: 12%; /* Height of the set number area */
+            border: 2px solid #3b82f6;
+            background-color: rgba(59, 130, 246, 0.2); /* Slight blue tint */
+            pointer-events: none;
+            z-index: 11;
+        }
+
         canvas {
             display: none; 
         }
+        
+        /* Show the specific cropped image */
         #snapshotPreview {
-            width: 100%;
-            max-width: 500px;
+            width: auto;
+            max-width: 100%;
             display: none;
             margin: 0 auto 20px auto;
-            border: 2px solid #2563eb;
-            border-radius: 8px;
+            border: 2px solid #3b82f6;
+            border-radius: 4px;
         }
+        
         .controls {
             display: flex;
             gap: 10px;
@@ -78,12 +109,14 @@
         }
         textarea {
             width: 100%;
-            height: 250px;
+            height: 100px;
             padding: 10px;
             border: 1px solid #ccc;
             border-radius: 4px;
             font-family: monospace;
-            font-size: 14px;
+            font-size: 24px; /* Larger font since it's just a few characters */
+            font-weight: bold;
+            text-align: center;
             box-sizing: border-box;
             resize: vertical;
         }
@@ -92,115 +125,10 @@
 <body>
 
     <div class="container">
-        <h2>Live Pokédex Scanner</h2>
-        <p style="text-align: center;">Hold your card steady in front of the camera and click Scan.</p>
+        <h2>Pokémon Card Set Number Scanner</h2>
+        <p style="text-align: center;">Align the card in the green box. Place the bottom-left number (e.g. 038/164) inside the blue box.</p>
 
         <div class="camera-container" id="videoContainer">
             <video id="cameraFeed" autoplay playsinline></video>
-        </div>
-
-        <img id="snapshotPreview" alt="Captured Card">
-
-        <canvas id="captureCanvas"></canvas>
-
-        <div class="controls">
-            <button id="scanBtn">📸 Capture & Scan</button>
-            <button id="resetBtn" style="display: none; background-color: #475569;">🔄 Scan Another Card</button>
-        </div>
-        
-        <div id="status">Waiting for camera permission...</div>
-        
-        <textarea id="output" placeholder="The extracted text from your Pokémon card will appear here..." readonly></textarea>
-    </div>
-
-    <script>
-        const video = document.getElementById('cameraFeed');
-        const canvas = document.getElementById('captureCanvas');
-        const snapshotPreview = document.getElementById('snapshotPreview');
-        const videoContainer = document.getElementById('videoContainer');
-        const scanBtn = document.getElementById('scanBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const output = document.getElementById('output');
-        const status = document.getElementById('status');
-
-        let stream = null;
-
-        // 1. Initialize the camera
-        async function startCamera() {
-            try {
-                // facingMode: 'environment' attempts to use the rear camera on mobile phones
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
-                });
-                video.srcObject = stream;
-                status.textContent = "Camera ready! Hold the card steady.";
-            } catch (err) {
-                console.error("Error accessing camera:", err);
-                status.textContent = "Error: Could not access the camera. Make sure you are running on localhost and gave permission.";
-                status.style.color = "red";
-                scanBtn.disabled = true;
-            }
-        }
-
-        // Start camera on page load
-        startCamera();
-
-        // 2. Handle the "Capture & Scan" button click
-        scanBtn.addEventListener('click', async () => {
-            // Set canvas dimensions to match the video stream
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            // Draw the current video frame onto the canvas
-            const context = canvas.getContext('2d');
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Convert canvas to an image data URL
-            const imageData = canvas.toDataURL('image/jpeg', 0.9);
-
-            // Update UI: Hide video, show snapshot, swap buttons
-            videoContainer.style.display = 'none';
-            snapshotPreview.src = imageData;
-            snapshotPreview.style.display = 'block';
-            scanBtn.style.display = 'none';
-            resetBtn.style.display = 'inline-block';
-            
-            status.textContent = "Status: Loading OCR engine and processing... (This may take a moment)";
-            status.style.color = "#2563eb";
-            output.value = "";
-
-            try {
-                // 3. Run Tesseract.js on the captured image data
-                const result = await Tesseract.recognize(imageData, 'eng', {
-                    logger: message => {
-                        if (message.status === 'recognizing text') {
-                            const progress = Math.round(message.progress * 100);
-                            status.textContent = `Status: Scanning card... ${progress}%`;
-                        }
-                    }
-                });
-
-                status.textContent = "Status: Scan Complete!";
-                output.value = result.data.text;
-
-            } catch (error) {
-                console.error(error);
-                status.textContent = "Status: Error processing image.";
-                status.style.color = "red";
-                output.value = "An error occurred during scanning: " + error.message;
-            }
-        });
-
-        // 4. Handle "Scan Another Card" button
-        resetBtn.addEventListener('click', () => {
-            snapshotPreview.style.display = 'none';
-            videoContainer.style.display = 'block';
-            scanBtn.style.display = 'inline-block';
-            resetBtn.style.display = 'none';
-            output.value = "";
-            status.textContent = "Camera ready! Hold the card steady.";
-            status.style.color = "#2563eb";
-        });
-    </script>
-</body>
-</html>
+            <div class="alignment-frame"></div>
+            <div class="crop-frame" id="cropBox
