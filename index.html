@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon Card OCR Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #imagePreview {
+            max-width: 100%;
+            max-height: 400px;
+            margin-top: 15px;
+            border-radius: 4px;
+            display: none;
+            border: 1px solid #ddd;
+        }
+        #status {
+            margin: 15px 0;
+            font-weight: 600;
+            color: #2563eb;
+        }
+        textarea {
+            width: 100%;
+            height: 250px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        .button-wrapper {
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Pokédex Text Scanner (OCR)</h2>
+        <p>Upload a photo of a Pokémon card to read its text.</p>
+
+        <div class="button-wrapper">
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <img id="imagePreview" alt="Pokémon Card Preview">
+        
+        <div id="status">Waiting for image upload...</div>
+        
+        <textarea id="output" placeholder="The extracted text from your Pokémon card will appear here..." readonly></textarea>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 1. Display the image preview
+            const reader = new FileReader();
+            reader.onload = () => {
+                imagePreview.src = reader.result;
+                imagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+
+            // 2. Prepare the UI for scanning
+            status.textContent = "Status: Loading OCR engine and processing... (This may take a moment)";
+            output.value = "";
+
+            try {
+                // 3. Run Tesseract.js
+                const result = await Tesseract.recognize(file, 'eng', {
+                    logger: message => {
+                        // Update progress live
+                        if (message.status === 'recognizing text') {
+                            const progress = Math.round(message.progress * 100);
+                            status.textContent = `Status: Scanning card... ${progress}%`;
+                        }
+                    }
+                });
+
+                // 4. Output the result
+                status.textContent = "Status: Scan Complete!";
+                output.value = result.data.text;
+
+            } catch (error) {
+                console.error(error);
+                status.textContent = "Status: Error processing image.";
+                output.value = "An error occurred during scanning: " + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
