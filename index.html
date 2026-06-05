@@ -131,4 +131,128 @@
         <div class="camera-container" id="videoContainer">
             <video id="cameraFeed" autoplay playsinline></video>
             <div class="alignment-frame"></div>
-            <div class="crop-frame" id="cropBox
+            <div class="crop-frame" id="cropBox"></div>
+        </div>
+
+        <div style="text-align: center;">
+            <img id="snapshotPreview" alt="Cropped Target Area">
+        </div>
+
+        <canvas id="captureCanvas"></canvas>
+
+        <div class="controls">
+            <button id="scanBtn">📸 Capture Number</button>
+            <button id="resetBtn" style="display: none; background-color: #475569;">🔄 Scan Another</button>
+        </div>
+        
+        <div id="status">Waiting for camera permission...</div>
+        
+        <textarea id="output" placeholder="Set Number..." readonly></textarea>
+    </div>
+
+   <script>
+    const video = document.getElementById('cameraFeed');
+    const canvas = document.getElementById('captureCanvas');
+    const snapshotPreview = document.getElementById('snapshotPreview');
+    const videoContainer = document.getElementById('videoContainer');
+    const scanBtn = document.getElementById('scanBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const output = document.getElementById('output');
+    const status = document.getElementById('status');
+    const cropBox = document.getElementById('cropBox');
+
+    let stream = null;
+
+    async function startCamera() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } 
+            });
+            video.srcObject = stream;
+            
+            video.onloadedmetadata = () => {
+                status.textContent = "Camera ready! Align the card and click Capture.";
+            };
+        } catch (err) {
+            console.error("Error accessing camera:", err);
+            status.textContent = "Error: Could not access the camera.";
+            status.style.color = "red";
+            scanBtn.disabled = true;
+        }
+    }
+
+    startCamera();
+
+    scanBtn.addEventListener('click', async () => {
+        // Calculate exactly where the blue crop box is relative to the actual video resolution
+        const videoRatio = video.videoWidth / video.clientWidth;
+        
+        // The blue box CSS is: left 5%, width 35%, bottom 5%, height 12%
+        const startX = video.clientWidth * 0.05 * videoRatio;
+        const startY = video.clientHeight * (1 - 0.05 - 0.12) * videoRatio; 
+        const cropWidth = video.clientWidth * 0.35 * videoRatio;
+        const cropHeight = video.clientHeight * 0.12 * videoRatio;
+
+        // Set canvas to ONLY the size of the cropped area
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+
+        // Draw just that small segment onto the canvas
+        const context = canvas.getContext('2d');
+        context.drawImage(
+            video, 
+            startX, startY, cropWidth, cropHeight, // Source Coordinates
+            0, 0, cropWidth, cropHeight            // Destination Coordinates
+        );
+
+        const imageData = canvas.toDataURL('image/jpeg', 1.0);
+
+        // UI Updates
+        videoContainer.style.display = 'none';
+        snapshotPreview.src = imageData;
+        snapshotPreview.style.display = 'inline-block';
+        scanBtn.style.display = 'none';
+        resetBtn.style.display = 'inline-block';
+        
+        status.textContent = "Status: Analyzing set number...";
+        status.style.color = "#2563eb";
+        output.value = "";
+
+        try {
+            // Run OCR specifically on the cropped image data
+            const result = await Tesseract.recognize(imageData, 'eng');
+
+            status.textContent = "Status: Scan Complete!";
+            const rawText = result.data.text;
+
+            // REGEX FILTER: Look for 3 digits, a slash, and 3 digits (e.g., 038/164)
+            const match = rawText.match(/\d{3}\/\d{3}/);
+
+            if (match) {
+                // If it finds the pattern, ONLY output the pattern
+                output.value = match[0];
+            } else {
+                // Fallback if it fails to find the exact pattern
+                output.value = "Number pattern not found. Raw read:\n" + rawText.trim();
+            }
+
+        } catch (error) {
+            console.error(error);
+            status.textContent = "Status: Error processing image.";
+            status.style.color = "red";
+            output.value = "Error: " + error.message;
+        }
+    });
+
+    resetBtn.addEventListener('click', () => {
+        snapshotPreview.style.display = 'none';
+        videoContainer.style.display = 'block';
+        scanBtn.style.display = 'inline-block';
+        resetBtn.style.display = 'none';
+        output.value = "";
+        status.textContent = "Camera ready! Align the card and click Capture.";
+        status.style.color = "#2563eb";
+    });
+</script>
+</body>
+</html>
