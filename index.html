@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Pokémon Card Scanner - Cropped</title>
+    <title>Live Pokémon Card Scanner - Fixed Frame</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body {
@@ -21,7 +21,6 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         
-        /* Camera Container & Overlays */
         .camera-container {
             position: relative;
             width: 100%;
@@ -37,37 +36,37 @@
             display: block;
         }
 
-        /* 1. Main Alignment Frame (Green) */
+        /* 1. Main Alignment Frame (Green) - LOCKED to Pokémon Card Proportions */
         .alignment-frame {
             position: absolute;
-            top: 5%; 
-            left: 5%; 
-            right: 5%; 
-            bottom: 5%;
-            border: 2px dashed #22c55e;
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%);
+            width: 80%; /* Takes up 80% of camera width */
+            max-width: 350px; 
+            aspect-ratio: 2.5 / 3.5; /* Forces the exact shape of a card! */
+            border: 3px dashed #22c55e;
             border-radius: 12px;
-            pointer-events: none; /* Lets clicks pass through */
+            pointer-events: none;
             z-index: 10;
         }
 
-        /* 2. Target Crop Frame (Blue - Bottom Left) */
+        /* 2. Target Crop Frame (Blue) - Positioned relative to the card frame */
         .crop-frame {
             position: absolute;
-            bottom: 5%; /* Matches the bottom of the green frame */
-            left: 5%;   /* Matches the left of the green frame */
-            width: 35%; /* Width of the set number area */
-            height: 12%; /* Height of the set number area */
+            bottom: 4%; /* 4% from the bottom edge of the card */
+            left: 6%;   /* 6% from the left edge of the card */
+            width: 32%; /* Just wide enough for "038/164" */
+            height: 8%; /* Just tall enough for the text */
             border: 2px solid #3b82f6;
-            background-color: rgba(59, 130, 246, 0.2); /* Slight blue tint */
+            background-color: rgba(59, 130, 246, 0.3);
             pointer-events: none;
-            z-index: 11;
         }
 
         canvas {
             display: none; 
         }
         
-        /* Show the specific cropped image */
         #snapshotPreview {
             width: auto;
             max-width: 100%;
@@ -114,7 +113,7 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             font-family: monospace;
-            font-size: 24px; /* Larger font since it's just a few characters */
+            font-size: 24px; 
             font-weight: bold;
             text-align: center;
             box-sizing: border-box;
@@ -126,12 +125,14 @@
 
     <div class="container">
         <h2>Pokémon Card Set Number Scanner</h2>
-        <p style="text-align: center;">Align the card in the green box. Place the bottom-left number (e.g. 038/164) inside the blue box.</p>
+        <p style="text-align: center;">Align the card in the green box. Make sure the set number is inside the blue box.</p>
 
         <div class="camera-container" id="videoContainer">
             <video id="cameraFeed" autoplay playsinline></video>
-            <div class="alignment-frame"></div>
-            <div class="crop-frame" id="cropBox"></div>
+            
+            <div class="alignment-frame" id="alignmentFrame">
+                <div class="crop-frame" id="cropBox"></div>
+            </div>
         </div>
 
         <div style="text-align: center;">
@@ -150,109 +151,109 @@
         <textarea id="output" placeholder="Set Number..." readonly></textarea>
     </div>
 
-   <script>
-    const video = document.getElementById('cameraFeed');
-    const canvas = document.getElementById('captureCanvas');
-    const snapshotPreview = document.getElementById('snapshotPreview');
-    const videoContainer = document.getElementById('videoContainer');
-    const scanBtn = document.getElementById('scanBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const output = document.getElementById('output');
-    const status = document.getElementById('status');
-    const cropBox = document.getElementById('cropBox');
+    <script>
+        const video = document.getElementById('cameraFeed');
+        const canvas = document.getElementById('captureCanvas');
+        const snapshotPreview = document.getElementById('snapshotPreview');
+        const videoContainer = document.getElementById('videoContainer');
+        const scanBtn = document.getElementById('scanBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+        const cropBox = document.getElementById('cropBox');
 
-    let stream = null;
+        let stream = null;
 
-    async function startCamera() {
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } 
-            });
-            video.srcObject = stream;
-            
-            video.onloadedmetadata = () => {
-                status.textContent = "Camera ready! Align the card and click Capture.";
-            };
-        } catch (err) {
-            console.error("Error accessing camera:", err);
-            status.textContent = "Error: Could not access the camera.";
-            status.style.color = "red";
-            scanBtn.disabled = true;
-        }
-    }
-
-    startCamera();
-
-    scanBtn.addEventListener('click', async () => {
-        // Calculate exactly where the blue crop box is relative to the actual video resolution
-        const videoRatio = video.videoWidth / video.clientWidth;
-        
-        // The blue box CSS is: left 5%, width 35%, bottom 5%, height 12%
-        const startX = video.clientWidth * 0.05 * videoRatio;
-        const startY = video.clientHeight * (1 - 0.05 - 0.12) * videoRatio; 
-        const cropWidth = video.clientWidth * 0.35 * videoRatio;
-        const cropHeight = video.clientHeight * 0.12 * videoRatio;
-
-        // Set canvas to ONLY the size of the cropped area
-        canvas.width = cropWidth;
-        canvas.height = cropHeight;
-
-        // Draw just that small segment onto the canvas
-        const context = canvas.getContext('2d');
-        context.drawImage(
-            video, 
-            startX, startY, cropWidth, cropHeight, // Source Coordinates
-            0, 0, cropWidth, cropHeight            // Destination Coordinates
-        );
-
-        const imageData = canvas.toDataURL('image/jpeg', 1.0);
-
-        // UI Updates
-        videoContainer.style.display = 'none';
-        snapshotPreview.src = imageData;
-        snapshotPreview.style.display = 'inline-block';
-        scanBtn.style.display = 'none';
-        resetBtn.style.display = 'inline-block';
-        
-        status.textContent = "Status: Analyzing set number...";
-        status.style.color = "#2563eb";
-        output.value = "";
-
-        try {
-            // Run OCR specifically on the cropped image data
-            const result = await Tesseract.recognize(imageData, 'eng');
-
-            status.textContent = "Status: Scan Complete!";
-            const rawText = result.data.text;
-
-            // REGEX FILTER: Look for 3 digits, a slash, and 3 digits (e.g., 038/164)
-            const match = rawText.match(/\d{3}\/\d{3}/);
-
-            if (match) {
-                // If it finds the pattern, ONLY output the pattern
-                output.value = match[0];
-            } else {
-                // Fallback if it fails to find the exact pattern
-                output.value = "Number pattern not found. Raw read:\n" + rawText.trim();
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } 
+                });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    status.textContent = "Camera ready! Align the card and click Capture.";
+                };
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                status.textContent = "Error: Could not access the camera.";
+                status.style.color = "red";
+                scanBtn.disabled = true;
             }
-
-        } catch (error) {
-            console.error(error);
-            status.textContent = "Status: Error processing image.";
-            status.style.color = "red";
-            output.value = "Error: " + error.message;
         }
-    });
 
-    resetBtn.addEventListener('click', () => {
-        snapshotPreview.style.display = 'none';
-        videoContainer.style.display = 'block';
-        scanBtn.style.display = 'inline-block';
-        resetBtn.style.display = 'none';
-        output.value = "";
-        status.textContent = "Camera ready! Align the card and click Capture.";
-        status.style.color = "#2563eb";
-    });
-</script>
+        startCamera();
+
+        scanBtn.addEventListener('click', async () => {
+            // Get the exact dimensions and positions of the video and the blue box on the screen
+            const videoRect = video.getBoundingClientRect();
+            const cropRect = cropBox.getBoundingClientRect();
+
+            // Calculate the scaling ratio (Actual Video Resolution vs Display Size)
+            const scaleX = video.videoWidth / videoRect.width;
+            const scaleY = video.videoHeight / videoRect.height;
+
+            // Map the screen coordinates of the blue box to the actual video feed coordinates
+            const startX = (cropRect.left - videoRect.left) * scaleX;
+            const startY = (cropRect.top - videoRect.top) * scaleY;
+            const cropWidth = cropRect.width * scaleX;
+            const cropHeight = cropRect.height * scaleY;
+
+            canvas.width = cropWidth;
+            canvas.height = cropHeight;
+
+            const context = canvas.getContext('2d');
+            context.drawImage(
+                video, 
+                startX, startY, cropWidth, cropHeight, 
+                0, 0, cropWidth, cropHeight            
+            );
+
+            const imageData = canvas.toDataURL('image/jpeg', 1.0);
+
+            // UI Updates
+            videoContainer.style.display = 'none';
+            snapshotPreview.src = imageData;
+            snapshotPreview.style.display = 'inline-block';
+            scanBtn.style.display = 'none';
+            resetBtn.style.display = 'inline-block';
+            
+            status.textContent = "Status: Analyzing set number...";
+            status.style.color = "#2563eb";
+            output.value = "";
+
+            try {
+                // Run OCR specifically on the cropped image
+                const result = await Tesseract.recognize(imageData, 'eng');
+                status.textContent = "Status: Scan Complete!";
+                const rawText = result.data.text;
+
+                // Look for 3 digits, a slash, and 3 digits (e.g., 038/164 or 028/187)
+                const match = rawText.match(/\d{3}\/\d{3}/);
+
+                if (match) {
+                    output.value = match[0];
+                } else {
+                    output.value = "Pattern not found. Read:\n" + rawText.trim();
+                }
+
+            } catch (error) {
+                console.error(error);
+                status.textContent = "Status: Error processing image.";
+                status.style.color = "red";
+                output.value = "Error: " + error.message;
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            snapshotPreview.style.display = 'none';
+            videoContainer.style.display = 'block';
+            scanBtn.style.display = 'inline-block';
+            resetBtn.style.display = 'none';
+            output.value = "";
+            status.textContent = "Camera ready! Align the card and click Capture.";
+            status.style.color = "#2563eb";
+        });
+    </script>
 </body>
 </html>
